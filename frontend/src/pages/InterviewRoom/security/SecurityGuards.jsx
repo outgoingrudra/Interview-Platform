@@ -1,0 +1,61 @@
+import TabSwitchDetector from "./TabSwitchDetector";
+import ClipboardGuard from "./ClipboardGuard";
+import FullscreenGuard from "./FullscreenGuard";
+import FaceDetectionGuard from "./FaceDetectionGuard";
+import SuspiciousGestureGuard from "./SuspiciousGestureGuard";
+import LookingAwayGuard from "./LookingAwayGuard";
+
+export default function SecurityGuards({
+  sessionId,
+  settings = {},
+  onWarning,
+  onTerminated,
+}) {
+  if (!sessionId) return null;
+
+  return (
+    <>
+      <TabSwitchDetector
+        sessionId={sessionId}
+        enabled={Boolean(settings?.detectTabSwitch)}
+        onWarning={onWarning}
+        onTerminated={onTerminated}
+      />
+
+      <ClipboardGuard
+        sessionId={sessionId}
+        enabled={Boolean(settings?.preventCopyPaste)}
+        onWarning={onWarning}
+        onTerminated={onTerminated}
+      />
+
+      <FullscreenGuard
+        sessionId={sessionId}
+        enabled={Boolean(settings?.requireFullscreen)}
+        onWarning={onWarning}
+        onTerminated={onTerminated}
+      />
+
+      <FaceDetectionGuard
+        sessionId={sessionId}
+        detectFaceEnabled={Boolean(settings?.detectFace)}
+        detectMultipleFacesEnabled={Boolean(settings?.detectMultipleFaces)}
+        onWarning={onWarning}
+        onTerminated={onTerminated}
+      />
+      <LookingAwayGuard
+        sessionId={sessionId}
+        enabled={Boolean(settings?.detectSuspiciousGesture)}
+        onWarning={onWarning}
+        onTerminated={onTerminated}
+      />
+
+      <SuspiciousGestureGuard
+        sessionId={sessionId}
+        enabled={Boolean(settings?.detectSuspiciousGesture)}
+      />
+
+     
+    </>
+  );
+}
