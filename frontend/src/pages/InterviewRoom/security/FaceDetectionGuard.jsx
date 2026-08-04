@@ -191,7 +191,7 @@ export default function FaceDetectionGuard({
               faceCount,
             });
           }
-        }, 2000);
+        }, 700);
       } catch (error) {
         console.error(
           "Face detection could not start:",
