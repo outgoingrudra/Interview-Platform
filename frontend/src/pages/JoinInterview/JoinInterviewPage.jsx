@@ -24,19 +24,26 @@ export default function JoinInterviewPage() {
     useJoinInterviewMutation();
 
   const interview = data?.interview;
+  const isHost = Boolean(data?.isHost);
 
   const handleJoin = async () => {
+    if (isHost) {
+      navigate(`/interviews/${id}/room`);
+      return;
+    }
+
     try {
       const response = await joinInterview(id).unwrap();
 
       toast.success("Interview joined successfully");
 
       navigate(
-        `/interviews/${id}/room?sessionId=${response.session._id}`,
+        `/interviews/${id}/room?sessionId=${response?.session?._id}`,
       );
     } catch (error) {
       toast.error(
-        error?.data?.message || "Failed to join interview",
+        error?.data?.message ||
+          "Failed to join interview",
       );
     }
   };
@@ -66,58 +73,73 @@ export default function JoinInterviewPage() {
           <div className="card-body gap-6 p-5 sm:p-8">
             <div>
               <span className="badge badge-success capitalize">
-                {interview.status}
+                {interview?.status}
               </span>
 
               <h1 className="mt-4 text-3xl font-black sm:text-4xl">
-                {interview.title}
+                {interview?.title}
               </h1>
 
               <p className="mt-2 text-base-content/60">
-                Review the interview details before joining.
+                {isHost
+                  ? "Open your live interview room and manage the session."
+                  : "Review the interview details before joining."}
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl bg-base-200 p-4">
                 <Clock3Icon className="size-6 text-primary" />
+
                 <p className="mt-3 text-sm text-base-content/60">
                   Duration
                 </p>
+
                 <p className="text-xl font-bold">
-                  {interview.durationMinutes} minutes
+                  {interview?.durationMinutes} minutes
                 </p>
               </div>
 
               <div className="rounded-2xl bg-base-200 p-4">
                 <ShieldCheckIcon className="size-6 text-success" />
+
                 <p className="mt-3 text-sm text-base-content/60">
                   Security
                 </p>
+
                 <p className="text-xl font-bold">
-                  Monitored session
+                  {isHost
+                    ? "Host session"
+                    : "Monitored session"}
                 </p>
               </div>
             </div>
 
-            <div className="alert alert-warning">
-              Stay in fullscreen mode and avoid switching tabs during
-              the interview.
-            </div>
+            {!isHost && (
+              <div className="alert alert-warning">
+                Stay in fullscreen mode and avoid switching tabs during
+                the interview.
+              </div>
+            )}
 
             <button
               type="button"
               onClick={handleJoin}
-              disabled={isJoining || interview.status !== "live"}
+              disabled={
+                isJoining ||
+                interview?.status !== "live"
+              }
               className="btn btn-primary btn-lg w-full"
             >
               <VideoIcon className="size-5" />
 
-              {isJoining
-                ? "Joining..."
-                : interview.status === "live"
-                  ? "Join Interview"
-                  : "Interview is not live"}
+              {isHost
+                ? "Open Interview Room"
+                : isJoining
+                  ? "Joining..."
+                  : interview?.status === "live"
+                    ? "Join Interview"
+                    : "Interview is not live"}
             </button>
           </div>
         </section>

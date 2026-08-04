@@ -27,7 +27,9 @@ export default function InterviewRoomPage() {
   const [answers, setAnswers] = useState({});
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [warningCount, setWarningCount] = useState(0);
-
+  const [isMobile, setIsMobile] = useState(
+    window?.matchMedia?.("(max-width: 767px)")?.matches ?? false,
+  );
   const {
     data: roomData,
     isLoading: isRoomLoading,
@@ -72,6 +74,13 @@ export default function InterviewRoomPage() {
       toast.error(error?.data?.message || "Failed to end interview");
     }
   };
+  useEffect(() => {
+    return () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const currentWarningCount = sessionData?.session?.warningCount;
@@ -210,6 +219,7 @@ export default function InterviewRoomPage() {
           settings={securitySettings}
           onWarning={setWarningCount}
           onTerminated={handleTerminated}
+          paused={Boolean(isChatOpen && isMobile)}
         />
       )}
     </main>

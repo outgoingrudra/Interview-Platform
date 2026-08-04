@@ -10,6 +10,7 @@ export default function SecurityGuards({
   settings = {},
   onWarning,
   onTerminated,
+  paused = false,
 }) {
   if (!sessionId) return null;
 
@@ -38,24 +39,35 @@ export default function SecurityGuards({
 
       <FaceDetectionGuard
         sessionId={sessionId}
-        detectFaceEnabled={Boolean(settings?.detectFace)}
-        detectMultipleFacesEnabled={Boolean(settings?.detectMultipleFaces)}
+        detectFaceEnabled={
+          Boolean(settings?.detectFace) &&
+          !paused
+        }
+        detectMultipleFacesEnabled={
+          Boolean(settings?.detectMultipleFaces) &&
+          !paused
+        }
         onWarning={onWarning}
         onTerminated={onTerminated}
       />
+
       <LookingAwayGuard
         sessionId={sessionId}
-        enabled={Boolean(settings?.detectSuspiciousGesture)}
+        enabled={
+          Boolean(settings?.detectSuspiciousGesture) &&
+          !paused
+        }
         onWarning={onWarning}
         onTerminated={onTerminated}
       />
 
       <SuspiciousGestureGuard
         sessionId={sessionId}
-        enabled={Boolean(settings?.detectSuspiciousGesture)}
+        enabled={
+          Boolean(settings?.detectSuspiciousGesture) &&
+          !paused
+        }
       />
-
-     
     </>
   );
 }

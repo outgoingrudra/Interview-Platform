@@ -61,7 +61,6 @@ export const getMyInterviews = asyncHandler(async (req, res) => {
     interviews,
   });
 });
-
 export const getInterviewById = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id).populate(
     "host",
@@ -72,34 +71,42 @@ export const getInterviewById = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Interview not found");
   }
 
-  const isHost = interview.host._id.toString() === req.user._id.toString();
+  const isHost =
+    interview.host._id.toString() ===
+    req.user._id.toString();
 
   if (isHost) {
     return res.status(200).json({
       success: true,
+      isHost: true,
       interview,
     });
   }
 
   if (interview.status !== "live") {
-    throw new ApiError(403, "You cannot access this interview");
+    throw new ApiError(
+      403,
+      "You cannot access this interview",
+    );
   }
 
   const safeInterview = interview.toObject();
 
-  safeInterview.questions = safeInterview.questions.map((question) => ({
-    _id: question._id,
-    question: question.question,
-    options: question.options,
-    marks: question.marks,
-  }));
+  safeInterview.questions = safeInterview.questions.map(
+    (question) => ({
+      _id: question._id,
+      question: question.question,
+      options: question.options,
+      marks: question.marks,
+    }),
+  );
 
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
+    isHost: false,
     interview: safeInterview,
   });
 });
-
 export const updateInterview = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
 
