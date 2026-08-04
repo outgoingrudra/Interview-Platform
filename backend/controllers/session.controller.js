@@ -7,22 +7,14 @@ import SecurityEvent from "../models/SecurityEvents.js";
 import { streamVideoClient, streamChatClient } from "../configs/stream.js";
 
 export const joinInterview = asyncHandler(async (req, res) => {
-  const interview = await Interview.findById(
-    req.params?.interviewId,
-  );
+  const interview = await Interview.findById(req.params?.interviewId);
 
   if (!interview) {
     throw new ApiError(404, "Interview not found");
   }
 
-  if (
-    interview?.host?.toString() ===
-    req.user?._id?.toString()
-  ) {
-    throw new ApiError(
-      400,
-      "Host cannot join as a candidate",
-    );
+  if (interview?.host?.toString() === req.user?._id?.toString()) {
+    throw new ApiError(400, "Host cannot join as a candidate");
   }
 
   if (interview?.status !== "live") {
@@ -30,10 +22,7 @@ export const joinInterview = asyncHandler(async (req, res) => {
   }
 
   if (!interview?.meetingId) {
-    throw new ApiError(
-      400,
-      "Interview room has not been created",
-    );
+    throw new ApiError(400, "Interview room has not been created");
   }
 
   let session = await InterviewSession.findOne({
@@ -42,31 +31,21 @@ export const joinInterview = asyncHandler(async (req, res) => {
   });
 
   if (session && session?.status !== "active") {
-    throw new ApiError(
-      400,
-      "This interview session is already closed",
-    );
+    throw new ApiError(400, "This interview session is already closed");
   }
 
-  if (
-    session?.expiresAt &&
-    new Date() > session?.expiresAt
-  ) {
+  if (session?.expiresAt && new Date() > session?.expiresAt) {
     session.status = "expired";
     await session.save();
 
-    throw new ApiError(
-      400,
-      "This interview session has expired",
-    );
+    throw new ApiError(400, "This interview session has expired");
   }
 
   if (!session) {
     const startedAt = new Date();
 
     const expiresAt = new Date(
-      startedAt.getTime() +
-        interview?.durationMinutes * 60 * 1000,
+      startedAt.getTime() + interview?.durationMinutes * 60 * 1000,
     );
 
     session = await InterviewSession.create({
@@ -78,8 +57,7 @@ export const joinInterview = asyncHandler(async (req, res) => {
     });
   }
 
-  const streamUserId =
-    req.user?._id?.toString();
+  const streamUserId = req.user?._id?.toString();
 
   const streamUser = {
     id: streamUserId,
@@ -93,11 +71,10 @@ export const joinInterview = asyncHandler(async (req, res) => {
     streamChatClient.upsertUsers([streamUser]),
   ]);
 
-  const videoCall =
-    streamVideoClient.video.call(
-      "default",
-      interview?.meetingId,
-    );
+  const videoCall = streamVideoClient.video.call(
+    "default",
+    interview?.meetingId,
+  );
 
   await videoCall.updateCallMembers({
     update_members: [
@@ -108,26 +85,22 @@ export const joinInterview = asyncHandler(async (req, res) => {
     ],
   });
 
-  const chatChannel =
-    streamChatClient.channel(
-      "messaging",
-      interview?.meetingId,
-    );
+  const chatChannel = streamChatClient.channel(
+    "messaging",
+    interview?.meetingId,
+  );
 
   await chatChannel.addMembers([streamUserId]);
 
-  const safeInterview =
-    interview?.toObject?.();
+  const safeInterview = interview?.toObject?.();
 
   safeInterview.questions =
-    safeInterview?.questions?.map(
-      (question) => ({
-        _id: question?._id,
-        question: question?.question,
-        options: question?.options,
-        marks: question?.marks,
-      }),
-    ) ?? [];
+    safeInterview?.questions?.map((question) => ({
+      _id: question?._id,
+      question: question?.question,
+      options: question?.options,
+      marks: question?.marks,
+    })) ?? [];
 
   res.status(200).json({
     success: true,
@@ -331,7 +304,7 @@ export const getInterviewSessions = asyncHandler(async (req, res) => {
 export const getCandidateResult = asyncHandler(async (req, res) => {
   const session = await InterviewSession.findById(req.params?.sessionId)
     .populate("candidate", "name email imageUrl")
-    .populate("interview", "title host status");
+    .populate("interview", "title host status questions");
 
   if (!session) {
     throw new ApiError(404, "Interview session not found");
@@ -365,12 +338,57 @@ export const getCandidateResult = asyncHandler(async (req, res) => {
     createdAt: 1,
   });
 
-  res.status(200).json({
+  const answerReview =
+    session?.interview?.questions?.map((question) => {
+      const submittedAnswer = submission?.answers?.find(
+        (answer) =>
+          answer?.questionId?.toString() === question?._id?.toString(),
+      );
+
+      const selectedOptionIndex = submittedAnswer?.selectedOption ?? null;
+
+      const correctOptionIndex = question?.correctOption ?? null;
+
+      return {
+        questionId: question?._id,
+        question: question?.question,
+        options: question?.options ?? [],
+
+        selectedOptionIndex,
+
+        selectedOption:
+          selectedOptionIndex !== null
+            ? (question?.options?.[selectedOptionIndex] ?? null)
+            : null,
+
+        correctOptionIndex,
+
+        correctOption:
+          correctOptionIndex !== null
+            ? (question?.options?.[correctOptionIndex] ?? null)
+            : null,
+
+        isCorrect:
+          selectedOptionIndex !== null &&
+          selectedOptionIndex === correctOptionIndex,
+
+        marks: question?.marks ?? 1,
+
+        awardedMarks:
+          submittedAnswer?.awardedMarks ??
+          (selectedOptionIndex === correctOptionIndex
+            ? (question?.marks ?? 1)
+            : 0),
+      };
+    }) ?? [];
+
+  return res.status(200).json({
     success: true,
     result: {
       session,
       submission: submission ?? null,
       securityEvents,
+      answerReview,
     },
   });
 });

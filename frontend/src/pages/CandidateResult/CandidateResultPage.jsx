@@ -1,5 +1,9 @@
 import { Link, useParams } from "react-router-dom";
-import { AlertCircleIcon, CheckCircle2Icon, HomeIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
+  HomeIcon,
+} from "lucide-react";
 
 import { useGetCandidateResultQuery } from "../../api/sessionApi";
 import ResultSummary from "./ResultSummary";
@@ -8,8 +12,12 @@ import AnswerReview from "./AnswerReview";
 export default function CandidateResultPage() {
   const { sessionId } = useParams();
 
-  const { data, isLoading, isError, error } =
-    useGetCandidateResultQuery(sessionId);
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+  } = useGetCandidateResultQuery(sessionId);
 
   if (isLoading) {
     return (
@@ -24,7 +32,11 @@ export default function CandidateResultPage() {
       <main className="min-h-[calc(100vh-4rem)] bg-base-200 px-4 py-8">
         <div className="alert alert-error mx-auto max-w-3xl">
           <AlertCircleIcon className="size-5" />
-          <span>{error?.data?.message || "Result could not be loaded"}</span>
+
+          <span>
+            {error?.data?.message ||
+              "Result could not be loaded"}
+          </span>
         </div>
       </main>
     );
@@ -33,8 +45,9 @@ export default function CandidateResultPage() {
   const result = data?.result;
   const submission = result?.submission;
   const session = result?.session;
+  const answerReview = result?.answerReview ?? [];
 
-  if (!result || !submission) {
+  if (!result) {
     return (
       <main className="min-h-[calc(100vh-4rem)] bg-base-200 px-4 py-8">
         <div className="alert alert-warning mx-auto max-w-3xl">
@@ -44,7 +57,9 @@ export default function CandidateResultPage() {
     );
   }
 
-  const hasMcqs = (submission.answers?.length ?? 0) > 0;
+  const hasMcqs =
+    answerReview?.length > 0 ||
+    (submission?.answers?.length ?? 0) > 0;
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-base-200">
@@ -63,18 +78,23 @@ export default function CandidateResultPage() {
           </div>
         </header>
 
-        {hasMcqs && (
+        {hasMcqs ? (
           <>
-            <ResultSummary submission={submission} session={session} />
+            <ResultSummary
+              submission={submission}
+              session={session}
+            />
 
-            <AnswerReview answers={submission.answers} />
+            <AnswerReview
+              answers={answerReview}
+            />
           </>
-        )}
-
-        {!hasMcqs && (
+        ) : (
           <section className="card border border-base-300 bg-base-100 shadow-sm">
             <div className="card-body text-center">
-              <h2 className="text-xl font-bold">Interview Completed</h2>
+              <h2 className="text-xl font-bold">
+                Interview Completed
+              </h2>
 
               <p className="text-base-content/60">
                 This interview did not contain any MCQ assessment.
@@ -84,7 +104,10 @@ export default function CandidateResultPage() {
         )}
 
         <div className="flex justify-center">
-          <Link to="/dashboard" className="btn btn-primary btn-sm">
+          <Link
+            to="/dashboard"
+            className="btn btn-primary btn-sm"
+          >
             <HomeIcon className="size-4" />
             Dashboard
           </Link>
