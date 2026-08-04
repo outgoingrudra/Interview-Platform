@@ -7,6 +7,10 @@ import HowItWorksSection from "./HowItWorks";
 import StatsSection from "./Stats";
 import CallToAction from "./CallToAction";
 
+
+
+
+
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-base-100 via-base-200 to-base-300">
