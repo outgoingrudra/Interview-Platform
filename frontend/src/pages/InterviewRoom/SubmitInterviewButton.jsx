@@ -37,40 +37,57 @@ export default function SubmitInterviewButton({
     }));
 
     try {
-      await submitInterview({
+      const response = await submitInterview({
         sessionId,
         answers: formattedAnswers,
       }).unwrap();
 
+      console.log("Submission successful:", response);
+
       /*
-        Tell FullscreenGuard that the next fullscreen exit
-        is intentional and should not create a warning.
+        Tell FullscreenGuard that this fullscreen exit
+        is intentional.
       */
       window.dispatchEvent(
         new Event(ALLOW_FULLSCREEN_EXIT_EVENT),
       );
 
+      /*
+        Do not wait for fullscreen exit.
+        Navigation should happen immediately.
+      */
       if (document?.fullscreenElement) {
-        try {
-          await document?.exitFullscreen?.();
-        } catch (error) {
-          console.error(
-            "Failed to exit fullscreen:",
-            error,
-          );
-        }
+        document
+          ?.exitFullscreen?.()
+          ?.catch?.((error) => {
+            console.error(
+              "Failed to exit fullscreen:",
+              error,
+            );
+          });
       }
 
       toast.success(
         "Interview submitted successfully",
       );
 
+      console.log(
+        "Redirecting to:",
+        `/sessions/${sessionId}/result`,
+      );
+
       navigate(`/sessions/${sessionId}/result`, {
         replace: true,
       });
     } catch (error) {
+      console.error(
+        "Interview submission failed:",
+        error,
+      );
+
       toast.error(
         error?.data?.message ||
+          error?.message ||
           "Failed to submit interview",
       );
     }
