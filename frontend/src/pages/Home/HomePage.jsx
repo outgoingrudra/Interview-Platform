@@ -24,7 +24,7 @@ export default function HomePage() {
 
       <HowItWorksSection />
 
-      <StatsSection />
+     <center> <StatsSection /></center>
 
       <CallToAction />
     </main>
