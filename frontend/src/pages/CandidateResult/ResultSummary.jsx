@@ -140,7 +140,7 @@ export default function ResultSummary({
       label: "Correct Answers",
       description: `${accuracy}% accuracy`,
       value: correctAnswers,
-      suffix: `/${totalQuestions}`,
+      suffix: ``,
       icon: ClipboardCheckIcon,
       valueClass: "text-success",
       iconClass:

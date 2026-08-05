@@ -13,19 +13,19 @@ const WASM_URL =
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
-/*
-  MediaPipe landmark indexes used:
-
-  1   → nose tip
-  33  → left outer eye
-  263 → right outer eye
-  10  → upper forehead
-  152 → chin
-*/
-
 const SAMPLE_INTERVAL_MS = 400;
-const REQUIRED_SUSPICIOUS_SAMPLES = 4; // About 3 seconds
-const REPORT_COOLDOWN_MS = 8000;
+
+/*
+  8 samples × 400 ms = about 3.2 seconds before
+  the first warning.
+*/
+const REQUIRED_SUSPICIOUS_SAMPLES = 8;
+
+/*
+  If the candidate continues looking away,
+  create another warning every 15 seconds.
+*/
+const REPEAT_WARNING_INTERVAL_MS = 15000;
 
 const YAW_THRESHOLD = 0.15;
 const PITCH_THRESHOLD = 0.14;
@@ -52,34 +52,31 @@ const getHeadDirection = (landmarks) => {
     return null;
   }
 
-  const eyeCenter = getMidpoint(leftEye, rightEye);
+  const eyeCenter = getMidpoint(
+    leftEye,
+    rightEye,
+  );
 
   const eyeDistance = Math.max(
-    Math.abs(rightEye?.x - leftEye?.x),
+    Math.abs(rightEye.x - leftEye.x),
     0.001,
   );
 
   const faceHeight = Math.max(
-    Math.abs(chin?.y - forehead?.y),
+    Math.abs(chin.y - forehead.y),
     0.001,
   );
 
-  /*
-    Positive yaw:
-    nose moved toward one side relative to eye center.
-  */
   const yaw =
-    (nose?.x - eyeCenter?.x) / eyeDistance;
+    (nose.x - eyeCenter.x) /
+    eyeDistance;
 
-  /*
-    Compare nose location vertically with an expected
-    approximate neutral position between forehead and chin.
-  */
   const expectedNoseY =
-    forehead?.y + faceHeight * 0.52;
+    forehead.y + faceHeight * 0.52;
 
   const pitch =
-    (nose?.y - expectedNoseY) / faceHeight;
+    (nose.y - expectedNoseY) /
+    faceHeight;
 
   let direction = "center";
 
@@ -113,63 +110,107 @@ export default function LookingAwayGuard({
 
   const suspiciousSamplesRef = useRef(0);
   const reportingRef = useRef(false);
-  const lastDirectionRef = useRef("center");
+  const terminatedRef = useRef(false);
+
+  const lastDirectionRef =
+    useRef("center");
+
+  const currentDirectionRef =
+    useRef("center");
+
+  const lastWarningAtRef = useRef(0);
+  const noticeShownRef = useRef(false);
 
   const [createSecurityEvent] =
     useCreateSecurityEventMutation();
 
   useEffect(() => {
-    if (!enabled || !sessionId) return;
+    if (!enabled || !sessionId) {
+      return;
+    }
 
     let cancelled = false;
+
+    const resetLookingAwayState = () => {
+      suspiciousSamplesRef.current = 0;
+      lastDirectionRef.current =
+        "center";
+      currentDirectionRef.current =
+        "center";
+      lastWarningAtRef.current = 0;
+      noticeShownRef.current = false;
+    };
 
     const reportLookingAway = async ({
       direction,
       yaw,
       pitch,
     }) => {
-      if (reportingRef.current || cancelled) return;
+      if (
+        reportingRef.current ||
+        terminatedRef.current ||
+        cancelled
+      ) {
+        return;
+      }
 
       reportingRef.current = true;
 
       try {
-        const response = await createSecurityEvent({
-          sessionId,
-          event: {
-            type: "looking_away",
-            severity: "medium",
-            message: `Candidate continuously looked ${direction} during the interview`,
-            metadata: {
-              direction,
-              yaw: Number(yaw?.toFixed(3)),
-              pitch: Number(pitch?.toFixed(3)),
-              durationSeconds:
-                (REQUIRED_SUSPICIOUS_SAMPLES *
-                  SAMPLE_INTERVAL_MS) /
-                1000,
-              occurredAt: new Date().toISOString(),
+        const response =
+          await createSecurityEvent({
+            sessionId,
+            event: {
+              type: "looking_away",
+              severity: "medium",
+              message: `Candidate continuously looked ${direction} during the interview`,
+              metadata: {
+                direction,
+                yaw: Number(
+                  yaw?.toFixed(3),
+                ),
+                pitch: Number(
+                  pitch?.toFixed(3),
+                ),
+                durationSeconds:
+                  (REQUIRED_SUSPICIOUS_SAMPLES *
+                    SAMPLE_INTERVAL_MS) /
+                  1000,
+                occurredAt:
+                  new Date().toISOString(),
+              },
             },
-          },
-        }).unwrap();
+          }).unwrap();
 
-        if (response?.countedAsWarning !== false) {
-          onWarning?.(response?.warningCount);
+        if (
+          response?.countedAsWarning !==
+          false
+        ) {
+          onWarning?.(
+            response?.warningCount,
+          );
         }
 
         if (response?.terminated) {
+          terminatedRef.current = true;
+
           toast.error(
-            "Interview terminated due to repeated security violations",
+            "Interview terminated due to repeated looking-away violations",
           );
 
           onTerminated?.(
-            `Repeated looking away detected. Warning limit ${response?.warningLimit} reached.`,
+            `Repeated looking away detected. Warning limit ${
+              response?.warningLimit ?? ""
+            } reached.`,
           );
 
           return;
         }
 
         toast.error(
-          `Looking ${direction} detected. Warning ${response?.warningCount}/${response?.warningLimit}`,
+          `Candidate kept looking ${direction}. Warning ${
+            response?.warningCount ?? 0
+          }/${response?.warningLimit ?? 0}`,
         );
       } catch (error) {
         console.error(
@@ -177,144 +218,249 @@ export default function LookingAwayGuard({
           error,
         );
       } finally {
-        window.setTimeout(() => {
-          reportingRef.current = false;
-        }, REPORT_COOLDOWN_MS);
+        reportingRef.current = false;
       }
     };
 
     const initialiseDetection = async () => {
       try {
         const vision =
-          await FilesetResolver.forVisionTasks(WASM_URL);
+          await FilesetResolver.forVisionTasks(
+            WASM_URL,
+          );
 
         if (cancelled) return;
 
         const landmarker =
-          await FaceLandmarker.createFromOptions(vision, {
-            baseOptions: {
-              modelAssetPath: MODEL_URL,
-              delegate: "GPU",
+          await FaceLandmarker.createFromOptions(
+            vision,
+            {
+              baseOptions: {
+                modelAssetPath: MODEL_URL,
+                delegate: "GPU",
+              },
+              runningMode: "VIDEO",
+              numFaces: 1,
+              minFaceDetectionConfidence: 0.65,
+              minFacePresenceConfidence: 0.65,
+              minTrackingConfidence: 0.65,
+              outputFaceBlendshapes: false,
+              outputFacialTransformationMatrixes:
+                false,
             },
-            runningMode: "VIDEO",
-            numFaces: 1,
-            minFaceDetectionConfidence: 0.65,
-            minFacePresenceConfidence: 0.65,
-            minTrackingConfidence: 0.65,
-            outputFaceBlendshapes: false,
-            outputFacialTransformationMatrixes: false,
-          });
+          );
 
         if (cancelled) {
-          landmarker?.close();
+          landmarker?.close?.();
           return;
         }
 
-        landmarkerRef.current = landmarker;
+        landmarkerRef.current =
+          landmarker;
 
         const mediaStream =
-          await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: "user",
-              width: { ideal: 640 },
-              height: { ideal: 480 },
+          await navigator.mediaDevices.getUserMedia(
+            {
+              video: {
+                facingMode: "user",
+                width: {
+                  ideal: 640,
+                },
+                height: {
+                  ideal: 480,
+                },
+              },
+              audio: false,
             },
-            audio: false,
-          });
+          );
 
         if (cancelled) {
           mediaStream
-            ?.getTracks()
-            ?.forEach((track) => track?.stop());
+            .getTracks()
+            .forEach((track) =>
+              track.stop(),
+            );
 
           return;
         }
 
-        streamRef.current = mediaStream;
+        streamRef.current =
+          mediaStream;
 
-        const video = videoRef.current;
+        const video =
+          videoRef.current;
 
         if (!video) {
           mediaStream
-            ?.getTracks()
-            ?.forEach((track) => track?.stop());
+            .getTracks()
+            .forEach((track) =>
+              track.stop(),
+            );
 
           return;
         }
 
-        video.srcObject = mediaStream;
+        video.srcObject =
+          mediaStream;
+
         await video.play();
 
-        intervalRef.current = window.setInterval(() => {
-          const currentVideo = videoRef.current;
-          const currentLandmarker =
-            landmarkerRef.current;
+        intervalRef.current =
+          window.setInterval(() => {
+            if (
+              cancelled ||
+              terminatedRef.current
+            ) {
+              return;
+            }
 
-          if (
-            !currentVideo ||
-            !currentLandmarker ||
-            currentVideo?.readyState < 2
-          ) {
-            return;
-          }
+            const currentVideo =
+              videoRef.current;
 
-          const result =
-            currentLandmarker.detectForVideo(
-              currentVideo,
-              performance.now(),
-            );
+            const currentLandmarker =
+              landmarkerRef.current;
 
-          const landmarks =
-            result?.faceLandmarks?.[0];
+            if (
+              !currentVideo ||
+              !currentLandmarker ||
+              currentVideo.readyState < 2
+            ) {
+              return;
+            }
 
-          if (!landmarks) {
-            suspiciousSamplesRef.current = 0;
-            lastDirectionRef.current = "center";
-            return;
-          }
+            let result;
 
-          const headPose =
-            getHeadDirection(landmarks);
+            try {
+              result =
+                currentLandmarker.detectForVideo(
+                  currentVideo,
+                  performance.now(),
+                );
+            } catch (error) {
+              console.error(
+                "Head direction frame detection failed:",
+                error,
+              );
 
-          if (!headPose) return;
+              return;
+            }
 
-          if (headPose?.direction === "center") {
-            suspiciousSamplesRef.current = Math.max(
-              0,
-              suspiciousSamplesRef.current - 2,
-            );
+            const landmarks =
+              result?.faceLandmarks?.[0];
 
-            lastDirectionRef.current = "center";
-            return;
-          }
+            /*
+              FaceDetectionGuard handles missing
+              faces separately, so do not create
+              a looking-away warning here.
+            */
+            if (!landmarks) {
+              suspiciousSamplesRef.current = 0;
+              lastDirectionRef.current =
+                "center";
+              currentDirectionRef.current =
+                "center";
+              noticeShownRef.current = false;
+              lastWarningAtRef.current = 0;
 
-          /*
-            Reset accumulation if the person changes direction.
-            This prevents random head movement from becoming
-            one continuous warning.
-          */
-          if (
-            lastDirectionRef.current !== "center" &&
-            lastDirectionRef.current !==
-              headPose?.direction
-          ) {
-            suspiciousSamplesRef.current = 0;
-          }
+              return;
+            }
 
-          lastDirectionRef.current =
-            headPose?.direction;
+            const headPose =
+              getHeadDirection(
+                landmarks,
+              );
 
-          suspiciousSamplesRef.current += 1;
+            if (!headPose) return;
 
-          if (
-            suspiciousSamplesRef.current >=
-            REQUIRED_SUSPICIOUS_SAMPLES
-          ) {
-            suspiciousSamplesRef.current = 0;
+            const {
+              direction,
+              yaw,
+              pitch,
+            } = headPose;
 
-            reportLookingAway(headPose);
-          }
-        }, SAMPLE_INTERVAL_MS);
+            currentDirectionRef.current =
+              direction;
+
+            /*
+              Candidate returned to the centre:
+              immediately reset the full warning cycle.
+            */
+            if (direction === "center") {
+              resetLookingAwayState();
+              return;
+            }
+
+            /*
+              If direction changes from left to right,
+              up to down, etc., start measuring again.
+            */
+            if (
+              lastDirectionRef.current !==
+                "center" &&
+              lastDirectionRef.current !==
+                direction
+            ) {
+              suspiciousSamplesRef.current =
+                0;
+
+              lastWarningAtRef.current =
+                0;
+
+              noticeShownRef.current =
+                false;
+            }
+
+            lastDirectionRef.current =
+              direction;
+
+            suspiciousSamplesRef.current +=
+              1;
+
+            /*
+              Give an immediate instruction, but do
+              not count it as a warning.
+            */
+            if (
+              !noticeShownRef.current
+            ) {
+              noticeShownRef.current =
+                true;
+
+              toast.error(
+                `Please look toward the screen. Looking ${direction} was detected.`,
+                {
+                  duration: 4000,
+                },
+              );
+            }
+
+            const thresholdReached =
+              suspiciousSamplesRef.current >=
+              REQUIRED_SUSPICIOUS_SAMPLES;
+
+            const now = Date.now();
+
+            const cooldownFinished =
+              lastWarningAtRef.current ===
+                0 ||
+              now -
+                lastWarningAtRef.current >=
+                REPEAT_WARNING_INTERVAL_MS;
+
+            if (
+              thresholdReached &&
+              cooldownFinished
+            ) {
+              lastWarningAtRef.current =
+                now;
+
+              reportLookingAway({
+                direction,
+                yaw,
+                pitch,
+              });
+            }
+          }, SAMPLE_INTERVAL_MS);
       } catch (error) {
         console.error(
           "Looking-away detection could not start:",
@@ -322,7 +468,10 @@ export default function LookingAwayGuard({
         );
 
         toast.error(
-          "Head movement monitoring could not start",
+          "Head movement monitoring could not start. Please allow camera access.",
+          {
+            duration: 6000,
+          },
         );
       }
     };
@@ -333,22 +482,27 @@ export default function LookingAwayGuard({
       cancelled = true;
 
       if (intervalRef.current) {
-        window.clearInterval(intervalRef.current);
+        window.clearInterval(
+          intervalRef.current,
+        );
       }
 
       streamRef.current
         ?.getTracks()
-        ?.forEach((track) => track?.stop());
+        ?.forEach((track) =>
+          track.stop(),
+        );
 
-      landmarkerRef.current?.close();
+      landmarkerRef.current?.close?.();
 
       intervalRef.current = null;
       streamRef.current = null;
       landmarkerRef.current = null;
 
-      suspiciousSamplesRef.current = 0;
       reportingRef.current = false;
-      lastDirectionRef.current = "center";
+      terminatedRef.current = false;
+
+      resetLookingAwayState();
     };
   }, [
     enabled,
@@ -358,7 +512,9 @@ export default function LookingAwayGuard({
     onTerminated,
   ]);
 
-  if (!enabled || !sessionId) return null;
+  if (!enabled || !sessionId) {
+    return null;
+  }
 
   return (
     <video
