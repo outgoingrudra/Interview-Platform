@@ -518,7 +518,7 @@ export default function AnswerReview({
                                       : "badge-error"
                                   }`}
                                 >
-                                  Your answer
+                                   Selected 
                                 </span>
                               )}
 
@@ -547,7 +547,7 @@ export default function AnswerReview({
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-base-300 bg-base-100/70 p-4">
                     <p className="text-xs font-bold uppercase tracking-wider text-base-content/45">
-                      Your Answer
+                      Selected Option
                     </p>
 
                     <p
